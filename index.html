@@ -1,141 +1,249 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>パズドラ 簡易EHP/軽減 計算 (Web) - パッチ版</title>
-<style>
-  :root{--bg:#f6f7fb;--card:#ffffff;--accent:#1273eb;--text:#1d2330;--muted:#697386;--border:#e5e7f0;--radius:14px;}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",Helvetica,Arial;background:var(--bg);color:var(--text);line-height:1.6}
-  header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--border)}
-  .wrap{max-width:760px;margin:0 auto;padding:16px}
-  h1{font-size:18px;margin:0;padding:8px 0 12px}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 1px rgba(0,0,0,.02)}
-  .grid{display:grid;grid-template-columns:1fr;gap:14px}
-  @media (min-width:720px){.grid{grid-template-columns:1fr 1fr}}
-  label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
-  input[type="number"],input[type="text"],select{width:100%;font-size:16px;padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff;outline:none}
-  input:focus,select:focus{border-color:#c9d7ff;box-shadow:0 0 0 3px rgba(18,115,235,.12)}
-  .btn{display:block;width:100%;padding:14px 16px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:16px;font-weight:600}
-  .bullets{margin:0;padding-left:1.1em}
-  .bullets li{margin:8px 0}
-  footer{color:var(--muted);font-size:12px;text-align:center;padding:24px 0}
-  .disabled{opacity:.5;pointer-events:none}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>パズドラ 簡易EHP/軽減 計算 v7a（Web）</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:16px; background:#fff}
+    h1{font-size:20px;margin:0 0 12px}
+    .card{border:1px solid #ddd;border-radius:10px;padding:12px;margin:0 0 16px;background:#fff}
+    label{display:block;font-size:14px;margin:10px 0 6px}
+    input[type="number"],input[type="text"],select{
+      width:100%;height:40px;box-sizing:border-box;border:1px solid #ccc;border-radius:8px;padding:0 10px;font-size:16px
+    }
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+    .btn{width:100%;height:44px;border:0;border-radius:10px;background:#007aff;color:#fff;font-size:16px}
+    .muted{opacity:.6}
+    pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ddd;border-radius:10px;padding:10px;background:#fafafa}
+    .row{display:flex;gap:10px}
+    .row > *{flex:1}
+    .seg{display:flex;border:1px solid #ccc;border-radius:10px;overflow:hidden}
+    .seg button{flex:1;padding:8px;border:0;background:#f5f5f5}
+    .seg button.active{background:#007aff;color:#fff}
+  </style>
 </head>
 <body>
-<header><div class="wrap"><h1>パズドラ 簡易EHP/軽減 計算 (Web)</h1></div></header>
-<main class="wrap">
+  <h1>パズドラ 簡易EHP/軽減 計算 v7a（Web）</h1>
+
   <div class="card">
-    <div class="grid">
+    <label>HP入力モード</label>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-v="raw" class="active">素のHP</button>
+      <button type="button" data-v="final">最終HP</button>
+    </div>
+
+    <label>チームHP（素のHP または 最終HP）</label>
+    <input id="team_hp" type="number" placeholder="例: 123456" />
+
+    <label>チームHP強化(覚醒) 個数</label>
+    <input id="teamhp_awkn" type="number" value="0" />
+
+    <div class="row">
       <div>
-        <label for="mode">HP入力モード</label>
-        <select id="mode">
-          <option value="base" selected>素のHP（倍率を掛ける）</option>
-          <option value="final">最終HP（倍率は1固定）</option>
-        </select>
+        <label>リーダーHP倍率（例: 1.5）</label>
+        <input id="ldr_hp" type="number" step="0.01" value="1" />
       </div>
       <div>
-        <label for="team_hp">チームHP（素のHP または 最終HP）</label>
-        <input id="team_hp" type="number" inputmode="numeric" placeholder="例: 123456">
-      </div>
-      <div>
-        <label for="enemy">敵のダメージ（任意）</label>
-        <input id="enemy" type="number" inputmode="numeric" placeholder="例: 999999">
-      </div>
-      <div>
-        <label for="ldr_hp">リーダーHP倍率</label>
-        <input id="ldr_hp" type="number" inputmode="decimal" value="1">
-      </div>
-      <div>
-        <label for="sub_hp">サブHP倍率</label>
-        <input id="sub_hp" type="number" inputmode="decimal" value="1">
-      </div>
-      <div>
-        <label for="etc_hp">その他HP倍率(任意)</label>
-        <input id="etc_hp" type="number" inputmode="decimal" value="1">
-      </div>
-      <div>
-        <label for="ldr_red">リーダー軽減率</label>
-        <input id="ldr_red" type="text" placeholder="例: 35 or 35%">
-      </div>
-      <div>
-        <label for="sub_red">サブ軽減率</label>
-        <input id="sub_red" type="text" placeholder="例: 25 or 25%">
-      </div>
-      <div>
-        <label for="add1">追加軽減①</label>
-        <input id="add1" type="text" placeholder="例: 5 or 5% (覚醒/バッジ等)">
-      </div>
-      <div>
-        <label for="add2">追加軽減②</label>
-        <input id="add2" type="text" placeholder="">
+        <label>サブHP倍率</label>
+        <input id="sub_hp" type="number" step="0.01" value="1" />
       </div>
     </div>
-    <div style="margin-top:14px"><button class="btn" id="calcBtn">計算</button></div>
-    <div class="card" style="margin-top:14px;border:1px dashed #e5e7f0">
-      <ul class="bullets" id="out"></ul>
+
+    <label>その他HP倍率（任意）</label>
+    <input id="etc_hp" type="number" step="0.01" value="1" />
+
+    <div class="row">
+      <div>
+        <label>リーダー軽減率（例: 35 または 35%）</label>
+        <input id="ldr_red" type="text" placeholder="35 or 35%" />
+      </div>
+      <div>
+        <label>サブ軽減率</label>
+        <input id="sub_red" type="text" placeholder="25 or 25%" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>追加軽減1</label>
+        <input id="add1" type="text" placeholder="5 or 5%（覚醒/バッジ等）" />
+      </div>
+      <div>
+        <label>追加軽減2</label>
+        <input id="add2" type="text" />
+      </div>
     </div>
   </div>
-</main>
-<footer class="wrap"><p>ブラウザだけで動作します。ホーム画面に追加もOK。</p></footer>
-<script>
-(function(){
-  const $=s=>document.querySelector(s);
-  const num=v=>{if(v==null)return 0;const n=Number(String(v).replace(/,/g,''));return isFinite(n)?n:0};
-  const pct=s=>{if(!s)return 0;const n=Number(String(s).trim().replace('%',''));return isFinite(n)?n/100:0};
-  const mul=s=>{if(!s)return 1;const n=Number(String(s));return isFinite(n)?n:1};
-  const fmt=n=>n.toLocaleString('ja-JP');
 
-  function applyMode(){
-    const finalMode = $('#mode').value==='final';
-    for(const id of ['ldr_hp','sub_hp','etc_hp']){
-      const el = $('#'+id);
-      el.disabled = finalMode;
-      el.classList.toggle('disabled', finalMode);
-      if(finalMode) el.value = '1';
-      else if(!el.value) el.value = '1';
-    }
+  <div class="card">
+    <label>敵の属性（属性軽減の適用先）</label>
+    <select id="enemy_attr">
+      <option value="none">なし</option>
+      <option value="F">火</option>
+      <option value="W">水</option>
+      <option value="G">木</option>
+      <option value="L">光</option>
+      <option value="D">闇</option>
+    </select>
+
+    <label class="muted">属性軽減（覚醒 7%）：各属性の個数 [火/水/木/光/闇]</label>
+    <div class="grid-5">
+      <input id="aw7_F" type="number" min="0" value="0">
+      <input id="aw7_W" type="number" min="0" value="0">
+      <input id="aw7_G" type="number" min="0" value="0">
+      <input id="aw7_L" type="number" min="0" value="0">
+      <input id="aw7_D" type="number" min="0" value="0">
+    </div>
+
+    <label class="muted">属性軽減（潜在 1%/1枠）：各属性の個数</label>
+    <div class="grid-5">
+      <input id="lat1_F" type="number" min="0" value="0">
+      <input id="lat1_W" type="number" min="0" value="0">
+      <input id="lat1_G" type="number" min="0" value="0">
+      <input id="lat1_L" type="number" min="0" value="0">
+      <input id="lat1_D" type="number" min="0" value="0">
+    </div>
+
+    <label class="muted">属性軽減＋（潜在 2.5%/2枠）：各属性の個数</label>
+    <div class="grid-5">
+      <input id="lat25_F" type="number" min="0" value="0">
+      <input id="lat25_W" type="number" min="0" value="0">
+      <input id="lat25_G" type="number" min="0" value="0">
+      <input id="lat25_L" type="number" min="0" value="0">
+      <input id="lat25_D" type="number" min="0" value="0">
+    </div>
+
+    <label>敵のダメージ（任意）</label>
+    <input id="enemy" type="number" placeholder="例: 999999" />
+  </div>
+
+  <button class="btn" id="calcBtn">計算</button>
+
+  <div class="card">
+    <label>結果</label>
+    <pre id="result" style="min-height:160px"></pre>
+  </div>
+
+<script>
+  // ---- ユーティリティ ----
+  const $ = id => document.getElementById(id);
+  const pct = s => {
+    if(!s) return 0;
+    s = String(s).trim().replace('%','');
+    const v = parseFloat(s);
+    return isNaN(v) ? 0 : v/100.0;
+  };
+  const mul = s => {
+    if(!s) return 1;
+    const v = parseFloat(s);
+    return isNaN(v) ? 1 : v;
+  };
+  const toInt = s => {
+    if(!s) return 0;
+    const v = parseInt(String(s).replace(/,/g,''),10);
+    return isNaN(v) ? 0 : v;
+  };
+  const nonneg = s => Math.max(0, toInt(s));
+
+  // モード切替UI
+  const modeSeg = $('modeSeg');
+  modeSeg.querySelectorAll('button').forEach(btn=>{
+    btn.onclick = () => {
+      modeSeg.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      applyMode();
+    };
+  });
+  function currentMode(){ // 'raw' or 'final'
+    return modeSeg.querySelector('.active').dataset.v;
   }
-  $('#mode').addEventListener('change', applyMode);
+  function applyMode(){
+    const finalMode = currentMode()==='final';
+    const hpFields = ['ldr_hp','sub_hp','etc_hp','teamhp_awkn'];
+    hpFields.forEach(id=>{
+      const el = $(id);
+      if(finalMode && (id==='ldr_hp' || id==='sub_hp' || id==='etc_hp')){
+        el.value = '1'; el.disabled = true; el.classList.add('muted');
+      }else if(finalMode && id==='teamhp_awkn'){
+        el.value = '0'; el.disabled = true; el.classList.add('muted');
+      }else{
+        el.disabled = false; el.classList.remove('muted');
+        if(!el.value) el.value = (id==='teamhp_awkn')?'0':'1';
+      }
+    });
+  }
   applyMode();
 
-  $('#calcBtn').addEventListener('click', ()=>{
-    const mode = $('#mode').value; // base or final
-    const inputHP = num($('#team_hp').value);
-    const hpMul = mul($('#ldr_hp').value) * mul($('#sub_hp').value) * mul($('#etc_hp').value);
-    const finalHP = (mode==='final') ? inputHP : Math.round(inputHP * hpMul);
-    const reds = [pct($('#ldr_red').value), pct($('#sub_red').value), pct($('#add1').value), pct($('#add2').value)];
-    let dmgCoeff = 1.0; reds.forEach(r=>dmgCoeff*=(1-r));
-    const totalRed = 1 - dmgCoeff;
-    const ehp = Math.round(finalHP / Math.max(dmgCoeff,1e-9));
-    const enemy = num($('#enemy').value);
+  // 属性係数（加算→上限100%）
+  function attrCoeff(){
+    const m = $('enemy_attr').value; // F/W/G/L/D or none
+    if(m==='none') return {coeff:1, jp:'—', n7:0, n1:0, n25:0, pct:0};
+    const n7  = nonneg($(`aw7_${m}`).value);
+    const n1  = nonneg($(`lat1_${m}`).value);
+    const n25 = nonneg($(`lat25_${m}`).value);
+    let total = 0.07*n7 + 0.01*n1 + 0.025*n25;
+    total = Math.max(0, Math.min(1, total));
+    return {coeff: 1 - total, jp: {F:'火',W:'水',G:'木',L:'光',D:'闇'}[m], n7, n1, n25, pct: total*100};
+  }
 
-    const out = $('#out'); out.innerHTML='';
-    const add=txt=>{const li=document.createElement('li');li.textContent=txt;out.appendChild(li);};
+  // 計算
+  $('calcBtn').onclick = ()=>{
+    const input_hp = toInt($('team_hp').value);
+    const finalMode = (currentMode()==='final');
 
-    add(`HP入力モード: ${mode==='final'?'最終HP':'素のHP'}`);
-    if(mode!=='final') add(`HP倍率の積: ×${hpMul.toFixed(2)}`);
-    add(`最終HP: ${fmt(finalHP)}`);
-    add(`総軽減(実質軽減率): ${(totalRed*100).toFixed(2)}%`);
-    add(`被ダメ係数: ${dmgCoeff.toFixed(4)}`);
-    add(`実効HP(EHP): ${fmt(ehp)}`);
+    let hp_mul = mul($('ldr_hp').value) * mul($('sub_hp').value) * mul($('etc_hp').value);
 
-    if(enemy>0){
-      const taken = Math.round(enemy*dmgCoeff);
-      const remain = finalHP - taken;
-      const remainPct = finalHP>0 ? Math.max(0,remain)/finalHP*100 : 0;
-      const needHP = taken + 1;
-      const survives = remain >= 1;
-      add(`敵ダメージ: ${fmt(enemy)}`);
-      add(`実際に受けるダメージ: ${fmt(taken)}`);
-      add(`残りHP: ${fmt(Math.max(0,remain))}（${remainPct.toFixed(2)}%）`);
-      add(`生存可否: ${survives?'◯ 生存':'× 撃沈'}`);
-      add(`このダメージを1残しで耐えるのに必要な最終HP: ${fmt(needHP)}`);
+    const hpAw = nonneg($('teamhp_awkn').value);
+    if(!finalMode){
+      hp_mul *= (1 + 0.05 * hpAw);
     }
-  });
-})();
+    const final_hp = finalMode ? input_hp : Math.round(input_hp * hp_mul);
+
+    // 一般軽減(乗算)
+    let base_coeff = 1.0;
+    ['ldr_red','sub_red','add1','add2'].forEach(id=>{
+      base_coeff *= (1 - pct($(id).value));
+    });
+
+    // 属性軽減
+    const ac = attrCoeff();
+    const dmg_coeff = base_coeff * ac.coeff;
+    const total_red = 1 - dmg_coeff;
+    const ehp = Math.round(final_hp / Math.max(dmg_coeff, 1e-9));
+
+    const enemy = toInt($('enemy').value);
+    const lines = [];
+    const b = '・ ';
+
+    lines.push(b + 'HP入力モード: ' + (finalMode?'最終HP':'素のHP'));
+    if(!finalMode){
+      lines.push(b + `HP倍率の積(チームHP強化含む): ×${hp_mul.toFixed(4)}  ※チームHP強化=${hpAw}個 → ×(1+0.05×${hpAw})`);
+    }
+    lines.push(b + `最終HP: ${final_hp.toLocaleString()}`);
+    lines.push(b + `総軽減(実質軽減率): ${(total_red*100).toFixed(2)}%`);
+    lines.push(b + `被ダメ係数: ${dmg_coeff.toFixed(6)}`);
+    lines.push(b + `実効HP(EHP): ${ehp.toLocaleString()}`);
+
+    if($('enemy_attr').value!=='none'){
+      lines.push(b + `属性軽減(敵属性: ${ac.jp}) [加算] 覚醒7%×${ac.n7}, 潜在1%×${ac.n1}, 潜在2.5%×${ac.n25} 合計: ${ac.pct.toFixed(2)}%`);
+    }
+    if(enemy>0){
+      const taken = Math.round(enemy * dmg_coeff);
+      const remain = final_hp - taken;
+      const remainPct = final_hp>0 ? (remain/final_hp*100) : 0;
+      const need_hp = Math.floor(enemy * dmg_coeff) + 1;
+      const lives = remain >= 1;
+      lines.push(b + `敵ダメージ: ${enemy.toLocaleString()}`);
+      lines.push(b + `実際に受けるダメージ: ${taken.toLocaleString()}`);
+      lines.push(b + `残りHP: ${Math.max(remain,0).toLocaleString()} (${Math.max(remainPct,0).toFixed(2)}%)`);
+      lines.push(b + `生存可否: ${lives ? '◯ 生存' : '× 撃沈'}`);
+      lines.push(b + `このダメージを1残しで耐える最終HP: ${need_hp.toLocaleString()}`);
+    }
+
+    $('result').textContent = lines.join('\n');
+  };
 </script>
 </body>
 </html>
