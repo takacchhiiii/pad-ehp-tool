@@ -1,249 +1,292 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>パズドラ 簡易EHP/軽減 計算 v7a（Web）</title>
-  <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:16px; background:#fff}
-    h1{font-size:20px;margin:0 0 12px}
-    .card{border:1px solid #ddd;border-radius:10px;padding:12px;margin:0 0 16px;background:#fff}
-    label{display:block;font-size:14px;margin:10px 0 6px}
-    input[type="number"],input[type="text"],select{
-      width:100%;height:40px;box-sizing:border-box;border:1px solid #ccc;border-radius:8px;padding:0 10px;font-size:16px
-    }
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-    .btn{width:100%;height:44px;border:0;border-radius:10px;background:#007aff;color:#fff;font-size:16px}
-    .muted{opacity:.6}
-    pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ddd;border-radius:10px;padding:10px;background:#fafafa}
-    .row{display:flex;gap:10px}
-    .row > *{flex:1}
-    .seg{display:flex;border:1px solid #ccc;border-radius:10px;overflow:hidden}
-    .seg button{flex:1;padding:8px;border:0;background:#f5f5f5}
-    .seg button.active{background:#007aff;color:#fff}
-  </style>
-</head>
-<body>
-  <h1>パズドラ 簡易EHP/軽減 計算 v7a（Web）</h1>
+# -*- coding: utf-8 -*-
+# Pythonista: PAD EHP/軽減 計算 v7a(加算版)
+# ・HP入力モード(素のHP/最終HP)
+# ・敵属性
+# ・覚醒/潜在の属性軽減は「加算」
+# ・チームHP強化は (1 + 0.05*n)
+# ・結果は箇条書き表示
 
-  <div class="card">
-    <label>HP入力モード</label>
-    <div class="seg" id="modeSeg">
-      <button type="button" data-v="raw" class="active">素のHP</button>
-      <button type="button" data-v="final">最終HP</button>
-    </div>
+import ui
 
-    <label>チームHP（素のHP または 最終HP）</label>
-    <input id="team_hp" type="number" placeholder="例: 123456" />
+ROW_H = 36
+MARGIN = 12
+GAP = 14
+ATTRS = [('火','F'), ('水','W'), ('木','G'), ('光','L'), ('闇','D')]
 
-    <label>チームHP強化(覚醒) 個数</label>
-    <input id="teamhp_awkn" type="number" value="0" />
+class Form(ui.View):
+    def __init__(self):
+        super().__init__()
+        self.name = 'パズドラ 簡易EHP/軽減 計算 v7a'
+        self.bg_color = 'white'
+        self._keyboard_inset = 0
 
-    <div class="row">
-      <div>
-        <label>リーダーHP倍率（例: 1.5）</label>
-        <input id="ldr_hp" type="number" step="0.01" value="1" />
-      </div>
-      <div>
-        <label>サブHP倍率</label>
-        <input id="sub_hp" type="number" step="0.01" value="1" />
-      </div>
-    </div>
+        self.sv = ui.ScrollView(flex='WH', always_bounce_vertical=True)
+        self.add_subview(self.sv)
 
-    <label>その他HP倍率（任意）</label>
-    <input id="etc_hp" type="number" step="0.01" value="1" />
+        self.content = ui.View(bg_color='white')
+        self.sv.add_subview(self.content)
 
-    <div class="row">
-      <div>
-        <label>リーダー軽減率（例: 35 または 35%）</label>
-        <input id="ldr_red" type="text" placeholder="35 or 35%" />
-      </div>
-      <div>
-        <label>サブ軽減率</label>
-        <input id="sub_red" type="text" placeholder="25 or 25%" />
-      </div>
-    </div>
+        self.inputs = {}
+        self.rows = []
+        self.attr_rows = []  # (label, prefix, {key->tf})
 
-    <div class="row">
-      <div>
-        <label>追加軽減1</label>
-        <input id="add1" type="text" placeholder="5 or 5%（覚醒/バッジ等）" />
-      </div>
-      <div>
-        <label>追加軽減2</label>
-        <input id="add2" type="text" />
-      </div>
-    </div>
-  </div>
+        y = MARGIN
 
-  <div class="card">
-    <label>敵の属性（属性軽減の適用先）</label>
-    <select id="enemy_attr">
-      <option value="none">なし</option>
-      <option value="F">火</option>
-      <option value="W">水</option>
-      <option value="G">木</option>
-      <option value="L">光</option>
-      <option value="D">闇</option>
-    </select>
+        # --- HP入力モード ---
+        mode_label = ui.Label(text='HP入力モード', font=('<System>', 14))
+        self.content.add_subview(mode_label)
+        self.mode = ui.SegmentedControl(segments=['素のHP', '最終HP'])
+        self.mode.selected_index = 0
+        self.mode.action = self._on_mode_change
+        self.content.add_subview(self.mode)
+        self.rows.append((mode_label, None))
+        y += 22 + ROW_H + GAP
 
-    <label class="muted">属性軽減（覚醒 7%）：各属性の個数 [火/水/木/光/闇]</label>
-    <div class="grid-5">
-      <input id="aw7_F" type="number" min="0" value="0">
-      <input id="aw7_W" type="number" min="0" value="0">
-      <input id="aw7_G" type="number" min="0" value="0">
-      <input id="aw7_L" type="number" min="0" value="0">
-      <input id="aw7_D" type="number" min="0" value="0">
-    </div>
+        def add_row(key, title, ph=''):
+            nonlocal y
+            lb = ui.Label(text=title); lb.font = ('<System>', 14)
+            self.content.add_subview(lb)
+            tf = ui.TextField(placeholder=ph)
+            tf.border_width = 1; tf.corner_radius = 6
+            tf.border_color = (0.85, 0.85, 0.85)
+            tf.clear_button_mode = 'while_editing'
+            tf.keyboard_type = ui.KEYBOARD_NUMBERS
+            tf.delegate = self
+            self.content.add_subview(tf)
+            self.rows.append((lb, tf))
+            self.inputs[key] = tf
+            y += 20 + 2 + ROW_H + GAP
 
-    <label class="muted">属性軽減（潜在 1%/1枠）：各属性の個数</label>
-    <div class="grid-5">
-      <input id="lat1_F" type="number" min="0" value="0">
-      <input id="lat1_W" type="number" min="0" value="0">
-      <input id="lat1_G" type="number" min="0" value="0">
-      <input id="lat1_L" type="number" min="0" value="0">
-      <input id="lat1_D" type="number" min="0" value="0">
-    </div>
+        # 入力
+        add_row('team_hp',   'チームHP(素のHP または 最終HP)', '例: 123456')
+        add_row('teamhp_awkn','チームHP強化(覚醒) 個数', '0')     # ← (1+0.05*n) で加算
+        add_row('ldr_hp',    'リーダーHP倍率', '1')
+        add_row('sub_hp',    'サブHP倍率', '1')
+        add_row('etc_hp',    'その他HP倍率(任意)', '1')
+        add_row('ldr_red',   'リーダー軽減率', '例: 35 or 35%')
+        add_row('sub_red',   'サブ軽減率', '例: 25 or 25%')
+        add_row('add1',      '追加軽減1', '例: 5 or 5% (覚醒/バッジ等)')
+        add_row('add2',      '追加軽減2', '')
 
-    <label class="muted">属性軽減＋（潜在 2.5%/2枠）：各属性の個数</label>
-    <div class="grid-5">
-      <input id="lat25_F" type="number" min="0" value="0">
-      <input id="lat25_W" type="number" min="0" value="0">
-      <input id="lat25_G" type="number" min="0" value="0">
-      <input id="lat25_L" type="number" min="0" value="0">
-      <input id="lat25_D" type="number" min="0" value="0">
-    </div>
+        # 敵の属性
+        attr_label = ui.Label(text='敵の属性(属性軽減の適用先)', font=('<System>', 14))
+        self.content.add_subview(attr_label)
+        self.enemy_attr = ui.SegmentedControl(segments=[a for a,_ in ATTRS] + ['なし'])
+        self.enemy_attr.selected_index = len(ATTRS)  # なし
+        self.content.add_subview(self.enemy_attr)
+        self.rows.append((attr_label, None))
 
-    <label>敵のダメージ（任意）</label>
-    <input id="enemy" type="number" placeholder="例: 999999" />
-  </div>
+        # 属性軽減行(覚醒7% / 潜在1% / 潜在+2.5%)
+        def add_attr_row(prefix, title):
+            lb = ui.Label(text=title); lb.font = ('<System>', 14)
+            self.content.add_subview(lb)
+            row_tfs = {}
+            for _, key in ATTRS:
+                tf = ui.TextField(placeholder='0')
+                tf.border_width = 1; tf.corner_radius = 6
+                tf.border_color = (0.85, 0.85, 0.85)
+                tf.clear_button_mode = 'while_editing'
+                tf.keyboard_type = ui.KEYBOARD_NUMBERS
+                tf.delegate = self
+                self.content.add_subview(tf)
+                row_tfs[f'{prefix}_{key}'] = tf
+                self.inputs[f'{prefix}_{key}'] = tf
+            self.attr_rows.append((lb, prefix, row_tfs))
 
-  <button class="btn" id="calcBtn">計算</button>
+        add_attr_row('aw7',  '属性軽減(覚醒 7%):各属性の個数[火/水/木/光/闇]')
+        add_attr_row('lat1', '属性軽減(潜在 1%/1枠):各属性の個数')
+        add_attr_row('lat25','属性軽減+(潜在 2.5%/2枠):各属性の個数')
 
-  <div class="card">
-    <label>結果</label>
-    <pre id="result" style="min-height:160px"></pre>
-  </div>
+        # 敵ダメージ
+        add_row('enemy',     '敵のダメージ(任意)', '例: 999999')
 
-<script>
-  // ---- ユーティリティ ----
-  const $ = id => document.getElementById(id);
-  const pct = s => {
-    if(!s) return 0;
-    s = String(s).trim().replace('%','');
-    const v = parseFloat(s);
-    return isNaN(v) ? 0 : v/100.0;
-  };
-  const mul = s => {
-    if(!s) return 1;
-    const v = parseFloat(s);
-    return isNaN(v) ? 1 : v;
-  };
-  const toInt = s => {
-    if(!s) return 0;
-    const v = parseInt(String(s).replace(/,/g,''),10);
-    return isNaN(v) ? 0 : v;
-  };
-  const nonneg = s => Math.max(0, toInt(s));
+        # ボタン & 結果
+        self.btn = ui.Button(title='計算', corner_radius=8,
+                             background_color='#007aff', tint_color='white')
+        self.btn.action = self.calculate
+        self.content.add_subview(self.btn)
 
-  // モード切替UI
-  const modeSeg = $('modeSeg');
-  modeSeg.querySelectorAll('button').forEach(btn=>{
-    btn.onclick = () => {
-      modeSeg.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      applyMode();
-    };
-  });
-  function currentMode(){ // 'raw' or 'final'
-    return modeSeg.querySelector('.active').dataset.v;
-  }
-  function applyMode(){
-    const finalMode = currentMode()==='final';
-    const hpFields = ['ldr_hp','sub_hp','etc_hp','teamhp_awkn'];
-    hpFields.forEach(id=>{
-      const el = $(id);
-      if(finalMode && (id==='ldr_hp' || id==='sub_hp' || id==='etc_hp')){
-        el.value = '1'; el.disabled = true; el.classList.add('muted');
-      }else if(finalMode && id==='teamhp_awkn'){
-        el.value = '0'; el.disabled = true; el.classList.add('muted');
-      }else{
-        el.disabled = false; el.classList.remove('muted');
-        if(!el.value) el.value = (id==='teamhp_awkn')?'0':'1';
-      }
-    });
-  }
-  applyMode();
+        self.result = ui.TextView(editable=False, selectable=True,
+                                  border_width=1, corner_radius=6,
+                                  border_color=(0.85,0.85,0.85))
+        self.content.add_subview(self.result)
 
-  // 属性係数（加算→上限100%）
-  function attrCoeff(){
-    const m = $('enemy_attr').value; // F/W/G/L/D or none
-    if(m==='none') return {coeff:1, jp:'—', n7:0, n1:0, n25:0, pct:0};
-    const n7  = nonneg($(`aw7_${m}`).value);
-    const n1  = nonneg($(`lat1_${m}`).value);
-    const n25 = nonneg($(`lat25_${m}`).value);
-    let total = 0.07*n7 + 0.01*n1 + 0.025*n25;
-    total = Math.max(0, Math.min(1, total));
-    return {coeff: 1 - total, jp: {F:'火',W:'水',G:'木',L:'光',D:'闇'}[m], n7, n1, n25, pct: total*100};
-  }
+        self._relayout()
+        self._apply_mode()
 
-  // 計算
-  $('calcBtn').onclick = ()=>{
-    const input_hp = toInt($('team_hp').value);
-    const finalMode = (currentMode()==='final');
+    # ---------- レイアウト ----------
+    def layout(self): self._relayout()
 
-    let hp_mul = mul($('ldr_hp').value) * mul($('sub_hp').value) * mul($('etc_hp').value);
+    def _relayout(self):
+        self.sv.frame = self.bounds
+        W = self.width - MARGIN*2; x = MARGIN; y = MARGIN
 
-    const hpAw = nonneg($('teamhp_awkn').value);
-    if(!finalMode){
-      hp_mul *= (1 + 0.05 * hpAw);
-    }
-    const final_hp = finalMode ? input_hp : Math.round(input_hp * hp_mul);
+        # HP入力モード
+        self.rows[0][0].frame = (x, y, W, 20); y += 22
+        self.mode.frame = (x, y, W, ROW_H); y += ROW_H + GAP
 
-    // 一般軽減(乗算)
-    let base_coeff = 1.0;
-    ['ldr_red','sub_red','add1','add2'].forEach(id=>{
-      base_coeff *= (1 - pct($(id).value));
-    });
+        # team_hp〜add2(8行)
+        for i in range(1, 9+1):
+            lb, tf = self.rows[i]
+            lb.frame = (x, y, W, 20); y += 22
+            tf.frame = (x, y, W, ROW_H); y += ROW_H + GAP
 
-    // 属性軽減
-    const ac = attrCoeff();
-    const dmg_coeff = base_coeff * ac.coeff;
-    const total_red = 1 - dmg_coeff;
-    const ehp = Math.round(final_hp / Math.max(dmg_coeff, 1e-9));
+        # 敵属性
+        lb, _ = self.rows[10]
+        lb.frame = (x, y, W, 20); y += 22
+        self.enemy_attr.frame = (x, y, W, ROW_H); y += ROW_H + GAP
 
-    const enemy = toInt($('enemy').value);
-    const lines = [];
-    const b = '・ ';
+        # 属性行は5分割
+        col_gap = 8
+        col_w = (W - col_gap*4) / 5.0
+        for lb, prefix, row_tfs in self.attr_rows:
+            lb.frame = (x, y, W, 20); y += 22
+            cx = x
+            for _, key in ATTRS:
+                row_tfs[f'{prefix}_{key}'].frame = (cx, y, col_w, ROW_H)
+                cx += col_w + col_gap
+            y += ROW_H + GAP
 
-    lines.push(b + 'HP入力モード: ' + (finalMode?'最終HP':'素のHP'));
-    if(!finalMode){
-      lines.push(b + `HP倍率の積(チームHP強化含む): ×${hp_mul.toFixed(4)}  ※チームHP強化=${hpAw}個 → ×(1+0.05×${hpAw})`);
-    }
-    lines.push(b + `最終HP: ${final_hp.toLocaleString()}`);
-    lines.push(b + `総軽減(実質軽減率): ${(total_red*100).toFixed(2)}%`);
-    lines.push(b + `被ダメ係数: ${dmg_coeff.toFixed(6)}`);
-    lines.push(b + `実効HP(EHP): ${ehp.toLocaleString()}`);
+        # 敵ダメージ(rows[11])
+        lb, tf = self.rows[11]
+        lb.frame = (x, y, W, 20); y += 22
+        tf.frame = (x, y, W, ROW_H); y += ROW_H + GAP
 
-    if($('enemy_attr').value!=='none'){
-      lines.push(b + `属性軽減(敵属性: ${ac.jp}) [加算] 覚醒7%×${ac.n7}, 潜在1%×${ac.n1}, 潜在2.5%×${ac.n25} 合計: ${ac.pct.toFixed(2)}%`);
-    }
-    if(enemy>0){
-      const taken = Math.round(enemy * dmg_coeff);
-      const remain = final_hp - taken;
-      const remainPct = final_hp>0 ? (remain/final_hp*100) : 0;
-      const need_hp = Math.floor(enemy * dmg_coeff) + 1;
-      const lives = remain >= 1;
-      lines.push(b + `敵ダメージ: ${enemy.toLocaleString()}`);
-      lines.push(b + `実際に受けるダメージ: ${taken.toLocaleString()}`);
-      lines.push(b + `残りHP: ${Math.max(remain,0).toLocaleString()} (${Math.max(remainPct,0).toFixed(2)}%)`);
-      lines.push(b + `生存可否: ${lives ? '◯ 生存' : '× 撃沈'}`);
-      lines.push(b + `このダメージを1残しで耐える最終HP: ${need_hp.toLocaleString()}`);
-    }
+        self.btn.frame = (x, y, W, 44); y += 54
+        self.result.frame = (x, y, W, 200); y += 200 + MARGIN
 
-    $('result').textContent = lines.join('\n');
-  };
-</script>
-</body>
-</html>
+        self.content.frame = (0, 0, self.width, y)
+        self.sv.content_size = (self.width, y + self._keyboard_inset)
+
+    # ---------- TextField delegate ----------
+    def textfield_did_begin_editing(self, tf):
+        self._keyboard_inset = 320
+        self.sv.content_inset = (0, 0, self._keyboard_inset, 0)
+        target_y = max(tf.y - 60, 0)
+        max_off = max(0, self.sv.content_size[1] - self.sv.height)
+        self.sv.content_offset = (0, min(target_y, max_off))
+
+    def textfield_did_end_editing(self, tf):
+        self._keyboard_inset = 0
+        self.sv.content_inset = (0, 0, 0, 0)
+        self._relayout()
+
+    # ---------- モード ----------
+    def _on_mode_change(self, sender): self._apply_mode()
+
+    def _apply_mode(self):
+        final_mode = (self.mode.selected_index == 1)  # 1=最終HP
+        for key in ('ldr_hp', 'sub_hp', 'etc_hp'):
+            tf = self.inputs[key]
+            if final_mode:
+                tf.text = '1'; tf.enabled = False; tf.alpha = 0.5
+            else:
+                if not tf.text: tf.text = '1'
+                tf.enabled = True; tf.alpha = 1.0
+        tf_hpawk = self.inputs['teamhp_awkn']
+        if final_mode:
+            tf_hpawk.text = '0'; tf_hpawk.enabled = False; tf_hpawk.alpha = 0.5
+        else:
+            tf_hpawk.enabled = True; tf_hpawk.alpha = 1.0
+
+    # ---------- パース ----------
+    def _pct(self, s):
+        s = (s or '').strip().replace('%', '')
+        if not s: return 0.0
+        try: return float(s)/100.0
+        except: return 0.0
+
+    def _mul(self, s):
+        s = (s or '').strip()
+        if not s: return 1.0
+        try: return float(s)
+        except: return 1.0
+
+    def _to_int(self, s):
+        try: return int((s or '0').replace(',', ''))
+        except: return 0
+
+    def _to_nonneg_int(self, s):
+        v = self._to_int(s);  return max(v, 0)
+
+    # 属性軽減(同属性内は加算、合計上限100%)
+    def _attr_coeff_and_desc(self):
+        seg = self.enemy_attr.selected_index
+        if seg >= len(ATTRS):
+            return 1.0, '—', 0, 0, 0, 0.0
+        jp, key = ATTRS[seg][0], ATTRS[seg][1]
+        n7   = self._to_nonneg_int(self.inputs[f'aw7_{key}'].text)
+        n1   = self._to_nonneg_int(self.inputs[f'lat1_{key}'].text)
+        n25  = self._to_nonneg_int(self.inputs[f'lat25_{key}'].text)
+        total = 0.07*n7 + 0.01*n1 + 0.025*n25   # ← 加算
+        total = max(0.0, min(total, 1.0))       # 上限100%
+        coeff = 1.0 - total
+        return coeff, jp, n7, n1, n25, total*100.0
+
+    # ---------- 計算 ----------
+    def calculate(self, sender):
+        input_hp = self._to_int(self.inputs['team_hp'].text)
+        final_mode = (self.mode.selected_index == 1)
+
+        hp_mul = self._mul(self.inputs['ldr_hp'].text) \
+               * self._mul(self.inputs['sub_hp'].text) \
+               * self._mul(self.inputs['etc_hp'].text)
+
+        # チームHP強化:加算 (1 + 0.05*n)
+        hp_awk_n = self._to_nonneg_int(self.inputs['teamhp_awkn'].text)
+        if not final_mode:
+            hp_mul *= (1.0 + 0.05*hp_awk_n)
+
+        final_hp = input_hp if final_mode else int(round(input_hp * hp_mul))
+
+        # 一般軽減(乗算)
+        base_coeff = 1.0
+        for k in ('ldr_red','sub_red','add1','add2'):
+            base_coeff *= (1.0 - self._pct(self.inputs[k].text))
+
+        # 属性軽減(加算→係数へ)
+        attr_coeff, attr_jp, n7, n1, n25, attr_pct = self._attr_coeff_and_desc()
+
+        dmg_coeff = base_coeff * attr_coeff
+        total_red = 1.0 - dmg_coeff
+        ehp = int(round(final_hp / max(dmg_coeff, 1e-9)))
+
+        enemy = self._to_int(self.inputs['enemy'].text)
+
+        lines = []
+        b = '・ '
+        lines.append(b + f'HP入力モード: {"最終HP" if final_mode else "素のHP"}')
+        if not final_mode:
+            lines.append(b + f'HP倍率の積(チームHP強化含む): ×{hp_mul:.4f}  '
+                           f'※チームHP強化={hp_awk_n}個 → ×(1+0.05×{hp_awk_n})')
+
+        lines.append(b + f'最終HP: {final_hp:,}')
+        lines.append(b + f'総軽減(実質軽減率): {total_red*100:.2f}%')
+        lines.append(b + f'被ダメ係数: {dmg_coeff:.6f}')
+        lines.append(b + f'実効HP(EHP): {ehp:,}')
+
+        if self.enemy_attr.selected_index < len(ATTRS):
+            lines.append(b + f'属性軽減(敵属性: {attr_jp}) [加算] '
+                           f'覚醒7%×{n7}, 潜在1%×{n1}, 潜在2.5%×{n25} '
+                           f'合計: {attr_pct:.2f}%')
+
+        if enemy > 0:
+            taken = int(round(enemy * dmg_coeff))
+            remain = final_hp - taken
+            remain_pct = (remain/final_hp*100.0) if final_hp>0 else 0.0
+            need_hp = int(enemy * dmg_coeff) + 1
+            lives = remain >= 1
+            lines.append(b + f'敵ダメージ: {enemy:,}')
+            lines.append(b + f'実際に受けるダメージ: {taken:,}')
+            lines.append(b + f'残りHP: {max(remain,0):,} ({max(remain_pct,0):.2f}%)')
+            lines.append(b + f'生存可否: {"◯ 生存" if lives else "× 撃沈"}')
+            lines.append(b + f'このダメージを1残しで耐える最終HP: {need_hp:,}')
+
+        self.result.text = '\n'.join(lines)
+
+def main():
+    v = Form()
+    v.present('fullscreen')
+
+if __name__ == '__main__':
+    main()
